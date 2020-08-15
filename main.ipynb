@@ -1,0 +1,327 @@
+{
+ "metadata": {
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.7.7-final"
+  },
+  "orig_nbformat": 2,
+  "kernelspec": {
+   "name": "python3",
+   "display_name": "Python 3"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 2,
+ "cells": [
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import pandas as pd\n",
+    "import numpy as np\n",
+    "import re\n",
+    "from collections import Counter\n",
+    "\n",
+    "from libraries import utils_ac as uac, engine_models as em"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "---\n",
+    "# PRE-PROCESSING CORPUS DATA"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "metadata": {
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "word_l = uac.extract_text('big.txt')\n",
+    "vocab = set(word_l)\n",
+    "word_count_dict = uac.get_count(word_l)\n",
+    "probs = uac.get_probs(word_count_dict)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "metadata": {
+    "tags": []
+   },
+   "outputs": [
+    {
+     "output_type": "stream",
+     "name": "stdout",
+     "text": "The first ten words in the corpus text are: ['the', 'project', 'gutenberg', 'ebook', 'of', 'the', 'adventures', 'of', 'sherlock', 'holmes']\nThere are 32192 unique words in the vocabulary and 32192 key values pairs\n"
+    }
+   ],
+   "source": [
+    "print(f\"The first ten words in the corpus text are: {word_l[0:10]}\")\n",
+    "print(f\"There are {len(vocab)} unique words in the vocabulary and {len(word_count_dict)} key values pairs\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "metadata": {
+    "tags": []
+   },
+   "outputs": [
+    {
+     "output_type": "stream",
+     "name": "stdout",
+     "text": "The frequent number of the word 'hero' in the corpus text is 55\nLength of probs variable is 32192\nP('hero') is 0.0000\n"
+    }
+   ],
+   "source": [
+    "print(f\"The frequent number of the word 'hero' in the corpus text is {word_count_dict.get('hero',0)}\")\n",
+    "print(f\"Length of probs variable is {len(probs)}\")\n",
+    "print(f\"P('hero') is {probs['hero']:.4f}\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "---\n",
+    "# TEST MODEL TO SUGGEST SPELLING SUGGESTIONS"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "metadata": {
+    "tags": []
+   },
+   "outputs": [
+    {
+     "output_type": "stream",
+     "name": "stdout",
+     "text": "entered word =  dys \nsuggestions =  ['dy', 'das', 'dis', 'dye', 'days', 'des']\nSuggestion word 1: dy, probability 0.000001\nSuggestion word 2: das, probability 0.000001\nSuggestion word 3: dis, probability 0.000001\nSuggestion word 4: dye, probability 0.000002\nSuggestion word 5: days, probability 0.000405\nSuggestion word 6: des, probability 0.000009\n\n\nBest suggestion word for dys is days with the highest probability of 0.000405\n"
+    }
+   ],
+   "source": [
+    "wrong_word = 'dys' \n",
+    "tmp_corrections = em.get_corrections(wrong_word, probs, vocab, 2, verbose=True)\n",
+    "sugg_word, prob_word = '', 0\n",
+    "\n",
+    "for i, word_prob in enumerate(tmp_corrections):\n",
+    "    if word_prob[1] > prob_word : sugg_word, prob_word = word_prob[0], word_prob[1]\n",
+    "    print(f\"Suggestion word {i+1}: {word_prob[0]}, probability {word_prob[1]:.6f}\")\n",
+    "\n",
+    "print(f'\\n\\nBest suggestion word for {wrong_word} is {sugg_word} with the highest probability of {prob_word:.6f}')"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "---\n",
+    "---\n",
+    "# FORMULA EXPLANATIONS BEHIND THE MODEL"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 1. The Probability of Words from Corpus Dictionary\n",
+    "\n",
+    "Given the dictionary of word counts, This is the formula to compute the probability of each word will appear if randomly selected from the corpus of words:\n",
+    "\n",
+    "$$P(w_i) = \\frac{C(w_i)}{M}$$\n",
+    "where:\n",
+    "- $C(w_i)$ is the total number of times $w_i$ appears in the corpus.\n",
+    "- $M$ is the total number of words in the corpus.\n",
+    "- For example, the probability of the word 'am' in the sentence **'I am happy because I am learning'** is:$$P(am) = \\frac{C(w_i)}{M} = \\frac {2}{7}$$"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 2. String Manipulations\n",
+    "\n",
+    "### 2.1 Delete Character\n",
+    "\n",
+    "Given a word and returns all the possible strings that have one character removed"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "metadata": {
+    "tags": []
+   },
+   "outputs": [
+    {
+     "output_type": "stream",
+     "name": "stdout",
+     "text": "input word : fliy \nsplit : [('', 'fliy'), ('f', 'liy'), ('fl', 'iy'), ('fli', 'y')], \ndelete : ['liy', 'fiy', 'fly', 'fli']\n"
+    }
+   ],
+   "source": [
+    "delete_word = em.delete_char(word=\"fliy\", verbose=True)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### 2.2 Switch Character\n",
+    "\n",
+    "Given a word and returns a list of all the possible switches of two letters that are adjacent to each other\n",
+    "- For example, given the word 'rnu', it returns {'nru', 'run'}, but does not return 'unr'"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "metadata": {
+    "tags": []
+   },
+   "outputs": [
+    {
+     "output_type": "stream",
+     "name": "stdout",
+     "text": "Input word : rnu \nsplit : [('', 'rnu'), ('r', 'nu'), ('rn', 'u')] \nswitch : ['nru', 'run']\n"
+    }
+   ],
+   "source": [
+    "switch_word = em.switch_char(word=\"rnu\", verbose=True)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### 2.3 Replace Character\n",
+    "\n",
+    "Given a word and returns all the possible strings that have one character replaced by another different letter"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 8,
+   "metadata": {
+    "tags": []
+   },
+   "outputs": [
+    {
+     "output_type": "stream",
+     "name": "stdout",
+     "text": "Input word : can \nsplit : [('', 'can'), ('c', 'an'), ('ca', 'n')] \nreplace : ['aan', 'ban', 'caa', 'cab', 'cac', 'cad', 'cae', 'caf', 'cag', 'cah', 'cai', 'caj', 'cak', 'cal', 'cam', 'cao', 'cap', 'caq', 'car', 'cas', 'cat', 'cau', 'cav', 'caw', 'cax', 'cay', 'caz', 'cbn', 'ccn', 'cdn', 'cen', 'cfn', 'cgn', 'chn', 'cin', 'cjn', 'ckn', 'cln', 'cmn', 'cnn', 'con', 'cpn', 'cqn', 'crn', 'csn', 'ctn', 'cun', 'cvn', 'cwn', 'cxn', 'cyn', 'czn', 'dan', 'ean', 'fan', 'gan', 'han', 'ian', 'jan', 'kan', 'lan', 'man', 'nan', 'oan', 'pan', 'qan', 'ran', 'san', 'tan', 'uan', 'van', 'wan', 'xan', 'yan', 'zan']\n"
+    }
+   ],
+   "source": [
+    "replace_word = em.replace_char(word='can', verbose=True)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### 2.4 Insert New Character\n",
+    "\n",
+    "Given a word and returns all the possible strings that have an additional character inserted"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 9,
+   "metadata": {
+    "tags": []
+   },
+   "outputs": [
+    {
+     "output_type": "stream",
+     "name": "stdout",
+     "text": "Input word : in \nsplit : [('', 'in'), ('i', 'n'), ('in', '')] \ninsert : ['ain', 'bin', 'cin', 'din', 'ein', 'fin', 'gin', 'hin', 'iin', 'jin', 'kin', 'lin', 'min', 'nin', 'oin', 'pin', 'qin', 'rin', 'sin', 'tin', 'uin', 'vin', 'win', 'xin', 'yin', 'zin', 'ian', 'ibn', 'icn', 'idn', 'ien', 'ifn', 'ign', 'ihn', 'iin', 'ijn', 'ikn', 'iln', 'imn', 'inn', 'ion', 'ipn', 'iqn', 'irn', 'isn', 'itn', 'iun', 'ivn', 'iwn', 'ixn', 'iyn', 'izn', 'ina', 'inb', 'inc', 'ind', 'ine', 'inf', 'ing', 'inh', 'ini', 'inj', 'ink', 'inl', 'inm', 'inn', 'ino', 'inp', 'inq', 'inr', 'ins', 'int', 'inu', 'inv', 'inw', 'inx', 'iny', 'inz']\nNumber of strings output by insert_letter('in') is 78\n"
+    }
+   ],
+   "source": [
+    "insert_word = em.insert_char('in', True)\n",
+    "print(f\"Number of strings output by insert_letter('in') is {len(insert_word)}\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 3. Combine All Manipulation Functions\n",
+    "\n",
+    "### 3.1 Manipulate One Character\n",
+    "\n",
+    "This function is used to get all the possible edits that are one edit away from a word. The edits consist of the replace, insert, delete, and optionally the switch operation. The 'switch' function is a less common edit function, so its use will be selected by an \"allow_switches\" input argument."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 10,
+   "metadata": {
+    "tags": []
+   },
+   "outputs": [
+    {
+     "output_type": "stream",
+     "name": "stdout",
+     "text": "input word : in \nedit word : ['ain', 'an', 'bin', 'bn', 'cin', 'cn', 'din', 'dn', 'ein', 'en', 'fin', 'fn', 'gin', 'gn', 'hin', 'hn', 'i', 'ia', 'ian', 'ib', 'ibn', 'ic', 'icn', 'id', 'idn', 'ie', 'ien', 'if', 'ifn', 'ig', 'ign', 'ih', 'ihn', 'ii', 'iin', 'ij', 'ijn', 'ik', 'ikn', 'il', 'iln', 'im', 'imn', 'ina', 'inb', 'inc', 'ind', 'ine', 'inf', 'ing', 'inh', 'ini', 'inj', 'ink', 'inl', 'inm', 'inn', 'ino', 'inp', 'inq', 'inr', 'ins', 'int', 'inu', 'inv', 'inw', 'inx', 'iny', 'inz', 'io', 'ion', 'ip', 'ipn', 'iq', 'iqn', 'ir', 'irn', 'is', 'isn', 'it', 'itn', 'iu', 'iun', 'iv', 'ivn', 'iw', 'iwn', 'ix', 'ixn', 'iy', 'iyn', 'iz', 'izn', 'jin', 'jn', 'kin', 'kn', 'lin', 'ln', 'min', 'mn', 'n', 'ni', 'nin', 'nn', 'oin', 'on', 'pin', 'pn', 'qin', 'qn', 'rin', 'rn', 'sin', 'sn', 'tin', 'tn', 'uin', 'un', 'vin', 'vn', 'win', 'wn', 'xin', 'xn', 'yin', 'yn', 'zin', 'zn']\n\nNumber of outputs from edit_one_char('in') is 129\n"
+    }
+   ],
+   "source": [
+    "tmp_word = \"in\"\n",
+    "tmp_edit_one_set = em.edit_one_char(tmp_word)\n",
+    "tmp_edit_one_l = sorted(list(tmp_edit_one_set))\n",
+    "\n",
+    "print(f\"input word : {tmp_word} \\nedit word : {tmp_edit_one_l}\\n\")\n",
+    "print(f\"Number of outputs from edit_one_char('in') is {len(em.edit_one_char('at'))}\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### 3.2 Manipulate Two Characters\n",
+    "\n",
+    "This function gets all the possible edits on a single word and then for each modified word, it will modify it again and returns a set of words that are two edits away."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 11,
+   "metadata": {
+    "tags": []
+   },
+   "outputs": [
+    {
+     "output_type": "stream",
+     "name": "stdout",
+     "text": "Number of strings with edit distance of two: 2654\nFirst 10 strings ['', 'a', 'aa', 'aaa', 'aab', 'aac', 'aad', 'aae', 'aaf', 'aag']\nLast 10 strings ['zv', 'zva', 'zw', 'zwa', 'zx', 'zxa', 'zy', 'zya', 'zz', 'zza']\nNumber of strings that are 2 edit distances from 'in' is 7154\n"
+    }
+   ],
+   "source": [
+    "tmp_edit_two_set = em.edit_two_chars(\"a\")\n",
+    "tmp_edit_two_l = sorted(list(tmp_edit_two_set))\n",
+    "print(f\"Number of strings with edit distance of two: {len(tmp_edit_two_l)}\")\n",
+    "print(f\"First 10 strings {tmp_edit_two_l[:10]}\")\n",
+    "print(f\"Last 10 strings {tmp_edit_two_l[-10:]}\")\n",
+    "print(f\"Number of strings that are 2 edit distances from 'in' is {len(em.edit_two_chars('in'))}\")"
+   ]
+  }
+ ]
+}
